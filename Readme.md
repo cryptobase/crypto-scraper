@@ -13,10 +13,12 @@ Scrape public crypto exchange trade information.
 
 # Basic approach #
 
-- Load latest record
-- If the latest record exists
-    - Fetch trade data newer than latest record from public exchange api into exchange specific model
-- Else
-    - Fetch x recent trade records from public exchange api into exchange specific model
-- Convert specific model to generic model
-- Persist new data
+```
+Load latest record from disk
+If the latest record exists
+    Fetch trade data newer than latest record from public exchange api into exchange specific model
+Else
+    Fetch x recent trade records from public exchange api into exchange specific model
+Convert specific model to generic model
+Persist new data to disk
+```
