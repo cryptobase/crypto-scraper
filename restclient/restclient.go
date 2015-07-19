@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-func getContent(url string) ([]byte, error) {
+func GetContent(url string) ([]byte, error) {
 	// Build the request
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -15,7 +15,7 @@ func getContent(url string) ([]byte, error) {
 	return handleRequest(req)
 }
 
-func handleRequest(req http.Request) ([]byte, error) {
+func handleRequest(req *http.Request) ([]byte, error) {
 	// Send the request via a client
 	client := &http.Client{}
 	resp, err := client.Do(req)
