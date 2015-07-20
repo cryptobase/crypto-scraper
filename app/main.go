@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/cryptobase/scraper/model"
 	"github.com/cryptobase/scraper/bitfinex"
+	"github.com/cryptobase/scraper/bitstamp"
 	"fmt"
 	"log"
 	"os"
@@ -12,19 +13,24 @@ import (
 
 func main() {
 
-	path := "/Users/wilelb/crypto-scraper/"
-	file := "bitfinex.csv"
-	output_file := fmt.Sprintf("%s%s", path, file)
 
-	_, err := os.Stat(path)
+	err1 := test(bitfinex.Scrape, "bitfinex")
+	if err1 != nil {
+		log.Fatal(err1)
+	}
+
+	err2 := test(bitstamp.Scrape, "bitstamp")
+	if err2 != nil {
+		log.Fatal(err2)
+	}
+}
+
+func test(f func(uint32) ([]model.Trade, error), name string) (error) {
+	output_file, err := prepare(name)
 	if err != nil {
-		err := os.MkdirAll(path, 0777)
-		if err != nil {
-			log.Fatal(err)
-			panic("Failed to create output directory")
-		} else {
-			log.Printf("Created output directory: [%s]", path)
-		}
+		//log.Fatal(err)
+		//panic("Failed to initialize")
+		return err
 	}
 
 	//Load existing trades from file
@@ -32,24 +38,45 @@ func main() {
 
 	last_timestamp := uint32(0)
 	if len(existing_trades) > 0 {
-		//last_record := existing_trades[len(existing_trades)-1]
+		last_record := existing_trades[len(existing_trades)-1]
+		last_timestamp = last_record.Timestamp
 	}
 
 	log.Printf("Last trade timestamp: %d", last_timestamp)
 
 	//Load new trades from api
-	new_trades, err := bitfinex.Scrape(last_timestamp)
+	new_trades, err := f(last_timestamp)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	//Append new trades to file
 	count, err1 := AppendToCsv(output_file, new_trades)
 	if err1 != nil {
-		log.Fatal(err1)
+		return err1
 	}
 
 	log.Printf("Appended %d records", count)
+	return nil
+}
+
+func prepare(name string) (string, error) {
+	path := "/Users/wilelb/crypto-scraper/"
+	file := fmt.Sprintf("%s.csv", name)
+	output_file := fmt.Sprintf("%s%s", path, file)
+
+	_, err := os.Stat(path)
+	if err != nil {
+		err := os.MkdirAll(path, 0777)
+		if err != nil {
+			log.Fatal(err)
+			return "", err
+		} else {
+			log.Printf("Created output directory: [%s]", path)
+		}
+	}
+
+	return output_file, nil
 }
 
 func LoadFromCsv(file string) ([]model.Trade, error) {
