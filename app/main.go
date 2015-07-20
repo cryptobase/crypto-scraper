@@ -22,7 +22,7 @@ func handler_wrapper(f func(int64) ([]model.Trade, error), name string) {
 	if err != nil {
 		log.Printf("[%10s] Update %7s :: msg=[%s]", name, "failed", err)
 	} else {
-		log.Printf("[%10s] Update %7s :: msg=[#existing=%d, last ts=%d, #new=%d]", name, "success", existing, last_timestamp, new)
+		log.Printf("[%10s] Update %7s :: msg=[#existing=%9d, last ts=%10d, #new=%5d]", name, "success", existing, last_timestamp, new)
 	}
 }
 
