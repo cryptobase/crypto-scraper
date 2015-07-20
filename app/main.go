@@ -88,7 +88,7 @@ func LoadFromCsv(file string) ([]model.Trade, error) {
 
 func AppendToCsv(file string, trades []model.Trade) (int, error) {
 	appended := 0
-	csvfile, err := os.Create(file)
+	csvfile, err := os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
 		return appended, err
 	}
