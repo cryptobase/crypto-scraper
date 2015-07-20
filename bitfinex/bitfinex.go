@@ -17,7 +17,7 @@ type BitfinexTrade struct {
 	Type		string
 }
 
-func Scrape(last_timestamp uint32) ([]model.Trade, error) {
+func Scrape(last_timestamp int64) ([]model.Trade, error) {
 	url := fmt.Sprintf("https://api.bitfinex.com/v1/trades/btcusd?timestamp=%d", last_timestamp+1)
 	content, err := restclient.GetContent(url)
 	if err != nil {
@@ -27,6 +27,7 @@ func Scrape(last_timestamp uint32) ([]model.Trade, error) {
 	bitfinex_trades := make([]BitfinexTrade,0)
 	err = json.Unmarshal(content, &bitfinex_trades	)
 	if err != nil {
+		//fmt.Printf("%s", string(content))
 		return nil, err
 	}
 
@@ -37,7 +38,7 @@ func Scrape(last_timestamp uint32) ([]model.Trade, error) {
 		trade := bitfinex_trades[last-i]
 
 		var t model.Trade
-		t.Timestamp = uint32(trade.Timestamp)
+		t.Timestamp = trade.Timestamp
 		t.TradeId = trade.Tid
 		t.Exchange = "bitfinex"
 		t.Type = trade.Type

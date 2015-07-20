@@ -9,55 +9,55 @@ import (
 	"os"
 	"encoding/csv"
 	"strconv"
+	//"time"
 )
 
 func main() {
+	handler_wrapper(bitfinex.Scrape, "bitfinex")
+	handler_wrapper(bitstamp.Scrape, "bitstamp")
+}
 
-
-	err1 := test(bitfinex.Scrape, "bitfinex")
-	if err1 != nil {
-		log.Fatal(err1)
-	}
-
-	err2 := test(bitstamp.Scrape, "bitstamp")
-	if err2 != nil {
-		log.Fatal(err2)
+func handler_wrapper(f func(int64) ([]model.Trade, error), name string) {
+	existing, new, last_timestamp, err := handler(f, name)
+	if err != nil {
+		log.Printf("[%10s] Update %7s :: msg=[%s]", name, "failed", err)
+	} else {
+		log.Printf("[%10s] Update %7s :: msg=[#existing=%d, last ts=%d, #new=%d]", name, "success", existing, last_timestamp, new)
 	}
 }
 
-func test(f func(uint32) ([]model.Trade, error), name string) (error) {
+func handler(f func(int64) ([]model.Trade, error), name string) (int, int, int64, error) {
 	output_file, err := prepare(name)
 	if err != nil {
-		//log.Fatal(err)
-		//panic("Failed to initialize")
-		return err
+		return 0,0,0,err
 	}
 
 	//Load existing trades from file
 	existing_trades, _ := LoadFromCsv(output_file)
 
-	last_timestamp := uint32(0)
+	//Fetch last timestamp
+	last_timestamp := int64(0)
 	if len(existing_trades) > 0 {
 		last_record := existing_trades[len(existing_trades)-1]
 		last_timestamp = last_record.Timestamp
 	}
-
-	log.Printf("Last trade timestamp: %d", last_timestamp)
+	//log.Printf("Last trade timestamp: %d", last_timestamp)
 
 	//Load new trades from api
 	new_trades, err := f(last_timestamp)
 	if err != nil {
-		return err
+		//log.Printf("Failed to load data")
+		return 0,0,0,err
 	}
 
 	//Append new trades to file
 	count, err1 := AppendToCsv(output_file, new_trades)
 	if err1 != nil {
-		return err1
+		return 0,0,0,err1
 	}
 
-	log.Printf("Appended %d records", count)
-	return nil
+	//log.Printf("Appended %d records", count)
+	return len(existing_trades), count, last_timestamp, nil
 }
 
 func prepare(name string) (string, error) {
@@ -80,7 +80,7 @@ func prepare(name string) (string, error) {
 }
 
 func LoadFromCsv(file string) ([]model.Trade, error) {
-	log.Printf("Loading from file: [%s]", file)
+	//log.Printf("Loading from file: [%s]", file)
 
 	trades := []model.Trade{}
 
@@ -100,8 +100,7 @@ func LoadFromCsv(file string) ([]model.Trade, error) {
 
 	var trade model.Trade
 	for _, record := range rawCSVdata {
-		ts, _ := strconv.ParseUint(record[0], 10, 64)
-		trade.Timestamp = uint32(ts)
+		trade.Timestamp, _ = strconv.ParseInt(record[0], 10, 64)
 		trade.TradeId, _ = strconv.ParseInt(record[1], 10, 64)
 		trade.Exchange = record[2]
 		trade.Type = record[3]
@@ -123,6 +122,10 @@ func AppendToCsv(file string, trades []model.Trade) (int, error) {
 
 	writer := csv.NewWriter(csvfile)
 	for _, trade := range trades {
+
+		//tm := time.Unix(trade.Timestamp, 0)
+		//fmt.Printf("%d-%d-%d\n", tm.Year(), tm.Month(), tm.Day())
+
 		record := []string{
 			fmt.Sprintf("%d", trade.Timestamp),
 			fmt.Sprintf("%d", trade.TradeId),

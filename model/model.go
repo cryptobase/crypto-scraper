@@ -1,7 +1,7 @@
 package model
 
 type Trade struct {
-	Timestamp 	uint32
+	Timestamp 	int64
 	TradeId		int64
 	Price		float64
 	Amount		float64
