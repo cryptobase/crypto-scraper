@@ -1,7 +1,7 @@
 package main
 
 import (
-	//"github.com/op/go-logging"
+	"github.com/op/go-logging"
 	"github.com/cryptobase/scraper/model"
 	"github.com/cryptobase/scraper/bitfinex"
 	"github.com/cryptobase/scraper/bitstamp"
@@ -22,7 +22,7 @@ type Day struct {
 	trades	[]model.Trade
 }
 
-//var log = logging.MustGetLogger("example")
+var _log = logging.MustGetLogger("example")
 
 func main() {
 	handler_wrapper(bitfinex.Scrape, "bitfinex")
@@ -153,7 +153,7 @@ func UnixTimestampToDay(unix int64) (Day) {
 	day.year = unixTs.Year()
 	day.month = int(unixTs.Month())
 	day.day = unixTs.Day()
-	day.trades = []model.Trade{}
+	day.trades = make([]model.Trade, 0)
 	return day
 }
 
@@ -173,6 +173,7 @@ func PartitionTradesByDay(last_timestamp int64, trades []model.Trade) ([]Day) {
 		day = UnixTimestampToDay(last_timestamp+1)
 	}
 
+	log.Printf("Looping over %d trades", len(trades))
 	//partition trade data by day
 	for _, trade := range trades {
 		day = UnixTimestampToDay(trade.Timestamp)
@@ -181,9 +182,10 @@ func PartitionTradesByDay(last_timestamp int64, trades []model.Trade) ([]Day) {
 		if SameDay(day, current_day) != true {
 			days = append(days, day)
 			day = current_day
-
 		}
 		day.trades = append(day.trades, trade)
+
+		log.Printf("%#v", day)
 	}
 	days = append(days, day)
 
@@ -193,8 +195,12 @@ func PartitionTradesByDay(last_timestamp int64, trades []model.Trade) ([]Day) {
 func Persist(path string, name string, last_timestamp int64, trades []model.Trade) (int, error) {
 	appended := 0
 
+	log.Printf("Incoming: %d trades", len(trades))
+
 	days := PartitionTradesByDay(last_timestamp, trades)
+	log.Printf("%3v", days)
 	for _, day := range days {
+		log.Printf("Appending: %d trades", len(day.trades))
 		count, err := AppendToCsv(path, name, day)
 		if err != nil {
 			log.Printf("Error: %s", err)
@@ -207,6 +213,8 @@ func Persist(path string, name string, last_timestamp int64, trades []model.Trad
 
 func AppendToCsv(path string, name string, day Day) (int, error) {
 	appended := 0
+
+
 
 	fname := fmt.Sprintf("%s.%d-%d-%d.csv", name, day.year, day.month, day.day)
 	//Check path ends with '/' or look for golang way to resolve paths
