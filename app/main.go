@@ -1,6 +1,7 @@
 package main
 
 import (
+	//"github.com/op/go-logging"
 	"github.com/cryptobase/scraper/model"
 	"github.com/cryptobase/scraper/bitfinex"
 	"github.com/cryptobase/scraper/bitstamp"
@@ -9,8 +10,19 @@ import (
 	"os"
 	"encoding/csv"
 	"strconv"
-	//"time"
+	"time"
+	"io/ioutil"
+	"regexp"
 )
+
+type Day struct {
+	year	int
+	month 	int
+	day 	int
+	trades	[]model.Trade
+}
+
+//var log = logging.MustGetLogger("example")
 
 func main() {
 	handler_wrapper(bitfinex.Scrape, "bitfinex")
@@ -27,13 +39,17 @@ func handler_wrapper(f func(int64) ([]model.Trade, error), name string) {
 }
 
 func handler(f func(int64) ([]model.Trade, error), name string) (int, int, int64, error) {
-	output_file, err := prepare(name)
+	path := "/Users/wilelb/crypto-scraper/"
+
+	err := prepare(path)
 	if err != nil {
 		return 0,0,0,err
 	}
 
 	//Load existing trades from file
-	existing_trades, _ := LoadFromCsv(output_file)
+	latest_file_name, _ := FindLatestCsvFile(path, name)
+	file := fmt.Sprintf("%s%s", path, latest_file_name)
+	existing_trades, _ := LoadFromCsv(file)
 
 	//Fetch last timestamp
 	last_timestamp := int64(0)
@@ -41,46 +57,65 @@ func handler(f func(int64) ([]model.Trade, error), name string) (int, int, int64
 		last_record := existing_trades[len(existing_trades)-1]
 		last_timestamp = last_record.Timestamp
 	}
-	//log.Printf("Last trade timestamp: %d", last_timestamp)
 
 	//Load new trades from api
 	new_trades, err := f(last_timestamp)
 	if err != nil {
-		//log.Printf("Failed to load data")
 		return 0,0,0,err
 	}
 
 	//Append new trades to file
-	count, err1 := AppendToCsv(output_file, new_trades)
+	count, err1 := Persist(path, name, last_timestamp, new_trades)
 	if err1 != nil {
 		return 0,0,0,err1
 	}
 
-	//log.Printf("Appended %d records", count)
 	return len(existing_trades), count, last_timestamp, nil
 }
 
-func prepare(name string) (string, error) {
-	path := "/Users/wilelb/crypto-scraper/"
-	file := fmt.Sprintf("%s.csv", name)
-	output_file := fmt.Sprintf("%s%s", path, file)
-
+func prepare(path string) (error) {
 	_, err := os.Stat(path)
 	if err != nil {
 		err := os.MkdirAll(path, 0777)
 		if err != nil {
 			log.Fatal(err)
-			return "", err
+			return err
 		} else {
 			log.Printf("Created output directory: [%s]", path)
 		}
 	}
 
-	return output_file, nil
+	return nil
+}
+
+func FindLatestCsvFile(path string, name string) (string, error) {
+	latest := 0
+	var latest_file string
+
+	regex, err := regexp.Compile(`(.*)\.(.*)-(.*)-(.*)\.csv`)
+	if err != nil {
+		return latest_file, err
+	}
+
+	files, _ := ioutil.ReadDir(path)
+	for _, f := range files {
+		groups := regex.FindStringSubmatch(f.Name())
+		if groups != nil {
+			if groups[1] == name {
+				s := fmt.Sprintf("%s%s%s", groups[2], groups[3], groups[4])
+				t, _ := strconv.ParseInt(s, 10, 32)
+				if int(t) > latest {
+					latest_file = f.Name()
+					latest = int(t)
+				}
+			}
+		}
+	}
+	return latest_file, nil
 }
 
 func LoadFromCsv(file string) ([]model.Trade, error) {
-	//log.Printf("Loading from file: [%s]", file)
+	log.Printf("Loading from csv file: %s", file)
 
 	trades := []model.Trade{}
 
@@ -112,8 +147,71 @@ func LoadFromCsv(file string) ([]model.Trade, error) {
 	return trades, nil
 }
 
-func AppendToCsv(file string, trades []model.Trade) (int, error) {
+func UnixTimestampToDay(unix int64) (Day) {
+	unixTs := time.Unix(unix, 0)
+	day := Day{0,0,0, []model.Trade{}}
+	day.year = unixTs.Year()
+	day.month = int(unixTs.Month())
+	day.day = unixTs.Day()
+	day.trades = []model.Trade{}
+	return day
+}
+
+func SameDay(day1 Day, day2 Day) (bool) {
+	return day1.year == day2.year && day1.month == day2.month && day1.day == day2.day
+}
+
+func PartitionTradesByDay(last_timestamp int64, trades []model.Trade) ([]Day) {
+	//slice containing all days
+	days := []Day{}
+
+	//initialize the initial day
+	var day Day
+	if last_timestamp == 0 {
+		day = UnixTimestampToDay(trades[0].Timestamp)
+	} else {
+		day = UnixTimestampToDay(last_timestamp+1)
+	}
+
+	//partition trade data by day
+	for _, trade := range trades {
+		day = UnixTimestampToDay(trade.Timestamp)
+		current_day := UnixTimestampToDay(trade.Timestamp)
+
+		if SameDay(day, current_day) != true {
+			days = append(days, day)
+			day = current_day
+
+		}
+		day.trades = append(day.trades, trade)
+	}
+	days = append(days, day)
+
+	return days
+}
+
+func Persist(path string, name string, last_timestamp int64, trades []model.Trade) (int, error) {
 	appended := 0
+
+	days := PartitionTradesByDay(last_timestamp, trades)
+	for _, day := range days {
+		count, err := AppendToCsv(path, name, day)
+		if err != nil {
+			log.Printf("Error: %s", err)
+		} else {
+			appended += count
+		}
+	}
+	return appended, nil
+}
+
+func AppendToCsv(path string, name string, day Day) (int, error) {
+	appended := 0
+
+	fname := fmt.Sprintf("%s.%d-%d-%d.csv", name, day.year, day.month, day.day)
+	//Check path ends with '/' or look for golang way to resolve paths
+	file := fmt.Sprintf("%s%s", path, fname)
+
 	csvfile, err := os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
 		return appended, err
@@ -121,11 +219,7 @@ func AppendToCsv(file string, trades []model.Trade) (int, error) {
 	defer csvfile.Close()
 
 	writer := csv.NewWriter(csvfile)
-	for _, trade := range trades {
-
-		//tm := time.Unix(trade.Timestamp, 0)
-		//fmt.Printf("%d-%d-%d\n", tm.Year(), tm.Month(), tm.Day())
-
+	for _, trade := range day.trades {
 		record := []string{
 			fmt.Sprintf("%d", trade.Timestamp),
 			fmt.Sprintf("%d", trade.TradeId),
