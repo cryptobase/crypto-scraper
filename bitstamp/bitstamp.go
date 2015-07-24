@@ -17,7 +17,7 @@ type BitstampTrade struct {
 	Type		int
 }
 
-func Scrape(last_timestamp uint32) ([]model.Trade, error) {
+func Scrape(last_timestamp int64) ([]model.Trade, error) {
 	url := "https://www.bitstamp.net/api/transactions/" //defaults to all trades from last hour
 	content, err := restclient.GetContent(url)
 	if err != nil {
@@ -37,8 +37,7 @@ func Scrape(last_timestamp uint32) ([]model.Trade, error) {
 		trade := bitstamp_trades[last-i]
 
 		var t model.Trade
-		ts, _ := strconv.ParseUint(trade.Date, 10, 32)
-		t.Timestamp = uint32(ts)
+		t.Timestamp, _ = strconv.ParseInt(trade.Date, 10, 64)
 		t.TradeId = trade.Tid
 		t.Exchange = "bitstamp"
 		if trade.Type == 0 {
