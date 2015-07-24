@@ -24,26 +24,36 @@ type Day struct {
 
 var _log = logging.MustGetLogger("example")
 
+var format = logging.MustStringFormatter(
+	"%{color}%{time:15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%{color:reset} %{message}",
+)
+
 func main() {
+	backend1 := logging.NewLogBackend(os.Stdout, "", 0)
+	backend1Formatter := logging.NewBackendFormatter(backend1, format)
+
+	logging.SetBackend(backend1Formatter)
+
 	handler_wrapper(bitfinex.Scrape, "bitfinex")
 	handler_wrapper(bitstamp.Scrape, "bitstamp")
 }
 
 func handler_wrapper(f func(int64) ([]model.Trade, error), name string) {
-	existing, new, last_timestamp, err := handler(f, name)
+	file, existing, new, appended, buckets, last_timestamp, err := handler(f, name)
 	if err != nil {
-		log.Printf("[%10s] Update %7s :: msg=[%s]", name, "failed", err)
+		_log.Error("[%10s] Update %7s :: msg=[%s]", name, "failed", err)
 	} else {
-		log.Printf("[%10s] Update %7s :: msg=[#existing=%9d, last ts=%10d, #new=%5d]", name, "success", existing, last_timestamp, new)
+		_log.Info("[%10s] Update %7s :: msg=[file:%25s, #existing=%9d, #new=%5d, #appended=%5d, #buckets=%2d, last ts=%10d]",
+			name, "success", file, existing, new, appended, buckets, last_timestamp)
 	}
 }
 
-func handler(f func(int64) ([]model.Trade, error), name string) (int, int, int64, error) {
+func handler(f func(int64) ([]model.Trade, error), name string) (string, int, int, int, int, int64, error) {
 	path := "/Users/wilelb/crypto-scraper/"
 
 	err := prepare(path)
 	if err != nil {
-		return 0,0,0,err
+		return "",0,0,0,0,0,err
 	}
 
 	//Load existing trades from file
@@ -61,16 +71,16 @@ func handler(f func(int64) ([]model.Trade, error), name string) (int, int, int64
 	//Load new trades from api
 	new_trades, err := f(last_timestamp)
 	if err != nil {
-		return 0,0,0,err
+		return latest_file_name,0,0,0,0,0,err
 	}
 
 	//Append new trades to file
-	count, err1 := Persist(path, name, last_timestamp, new_trades)
+	appended, days, err1 := Persist(path, name, last_timestamp, new_trades)
 	if err1 != nil {
-		return 0,0,0,err1
+		return latest_file_name,0,0,0,0,0,err1
 	}
 
-	return len(existing_trades), count, last_timestamp, nil
+	return latest_file_name, len(existing_trades), len(new_trades), appended, days, last_timestamp, nil
 }
 
 func prepare(path string) (error) {
@@ -115,8 +125,6 @@ func FindLatestCsvFile(path string, name string) (string, error) {
 }
 
 func LoadFromCsv(file string) ([]model.Trade, error) {
-	log.Printf("Loading from csv file: %s", file)
-
 	trades := []model.Trade{}
 
 	csvfile, err := os.Open(file)
@@ -173,34 +181,32 @@ func PartitionTradesByDay(last_timestamp int64, trades []model.Trade) ([]Day) {
 		day = UnixTimestampToDay(last_timestamp+1)
 	}
 
-	log.Printf("Looping over %d trades", len(trades))
-	//partition trade data by day
+	//partition each trade in the correct day bucket, assuming ordered (oldest -> newest) list of trades
+	var x = []model.Trade{}
 	for _, trade := range trades {
 		day = UnixTimestampToDay(trade.Timestamp)
 		current_day := UnixTimestampToDay(trade.Timestamp)
 
 		if SameDay(day, current_day) != true {
-			days = append(days, day)
+			//Rollover to next day
+			x = append(x, trade)
+			day.trades = x
 			day = current_day
+			x = []model.Trade{}
 		}
-		day.trades = append(day.trades, trade)
-
-		log.Printf("%#v", day)
+		x = append(x, trade)
 	}
+
+	day.trades = x
 	days = append(days, day)
 
 	return days
 }
 
-func Persist(path string, name string, last_timestamp int64, trades []model.Trade) (int, error) {
+func Persist(path string, name string, last_timestamp int64, trades []model.Trade) (int, int, error) {
 	appended := 0
-
-	log.Printf("Incoming: %d trades", len(trades))
-
 	days := PartitionTradesByDay(last_timestamp, trades)
-	log.Printf("%3v", days)
 	for _, day := range days {
-		log.Printf("Appending: %d trades", len(day.trades))
 		count, err := AppendToCsv(path, name, day)
 		if err != nil {
 			log.Printf("Error: %s", err)
@@ -208,13 +214,11 @@ func Persist(path string, name string, last_timestamp int64, trades []model.Trad
 			appended += count
 		}
 	}
-	return appended, nil
+	return appended, len(days), nil
 }
 
 func AppendToCsv(path string, name string, day Day) (int, error) {
 	appended := 0
-
-
 
 	fname := fmt.Sprintf("%s.%d-%d-%d.csv", name, day.year, day.month, day.day)
 	//Check path ends with '/' or look for golang way to resolve paths
