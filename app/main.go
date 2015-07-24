@@ -2,9 +2,9 @@ package main
 
 import (
 	"github.com/op/go-logging"
-	"github.com/cryptobase/scraper/model"
-	"github.com/cryptobase/scraper/bitfinex"
-	"github.com/cryptobase/scraper/bitstamp"
+	"github.com/cryptobase/crypto-scraper/model"
+	"github.com/cryptobase/crypto-scraper/bitfinex"
+	"github.com/cryptobase/crypto-scraper/bitstamp"
 	"fmt"
 	"log"
 	"os"

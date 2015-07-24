@@ -1,8 +1,8 @@
 package bitfinex
 
 import (
-	"github.com/cryptobase/scraper/model"
-	"github.com/cryptobase/scraper/restclient"
+	"github.com/cryptobase/crypto-scraper/model"
+	"github.com/cryptobase/crypto-scraper/restclient"
 	"encoding/json"
 	"strconv"
 	"fmt"
