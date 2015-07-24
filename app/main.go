@@ -145,6 +145,13 @@ func FindLatestCsvFile(path string, name string) (string, error) {
 			}
 		}
 	}
+
+	//initialize first file with current date
+	if len(latest_file) == 0 {
+		t := time.Now()
+		latest_file = fmt.Sprintf("%s.%d-%d-%d.csv", name, t.Year(), int(t.Month()), t.Day())
+	}
+
 	return latest_file, nil
 }
 
