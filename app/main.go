@@ -13,6 +13,10 @@ import (
 	"time"
 	"io/ioutil"
 	"regexp"
+	"github.com/vharitonsky/iniflags"
+	"flag"
+	"os/user"
+	"strings"
 )
 
 type Day struct {
@@ -25,10 +29,16 @@ type Day struct {
 var _log = logging.MustGetLogger("example")
 
 var format = logging.MustStringFormatter(
-	"%{color}%{time:15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%{color:reset} %{message}",
+	"%{color}%{time:2015-01-01 15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%{color:reset} %{message}",
+)
+
+var (
+	path = flag.String("path", "~/crypto-scraper/", "Basepath indicating where to store the scraping output.")
 )
 
 func main() {
+	iniflags.Parse()
+
 	backend1 := logging.NewLogBackend(os.Stdout, "", 0)
 	backend1Formatter := logging.NewBackendFormatter(backend1, format)
 
@@ -49,15 +59,20 @@ func handler_wrapper(f func(int64) ([]model.Trade, error), name string) {
 }
 
 func handler(f func(int64) ([]model.Trade, error), name string) (string, int, int, int, int, int64, error) {
-	path := "/Users/wilelb/crypto-scraper/"
+	p := *path
+	if strings.HasPrefix(*path, "~") {
+		usr, _ := user.Current()
+		dir := usr.HomeDir
+		p = strings.Replace(*path, "~", dir, 1)
+	}
 
-	err := prepare(path)
+	err := prepare(p)
 	if err != nil {
 		return "",0,0,0,0,0,err
 	}
 
 	//Load existing trades from file
-	latest_file_name, _ := FindLatestCsvFile(path, name)
+	latest_file_name, _ := FindLatestCsvFile(p, name)
 	file := fmt.Sprintf("%s%s", path, latest_file_name)
 	existing_trades, _ := LoadFromCsv(file)
 
@@ -75,7 +90,7 @@ func handler(f func(int64) ([]model.Trade, error), name string) (string, int, in
 	}
 
 	//Append new trades to file
-	appended, days, err1 := Persist(path, name, last_timestamp, new_trades)
+	appended, days, err1 := Persist(p, name, last_timestamp, new_trades)
 	if err1 != nil {
 		return latest_file_name,0,0,0,0,0,err1
 	}
@@ -84,6 +99,7 @@ func handler(f func(int64) ([]model.Trade, error), name string) (string, int, in
 }
 
 func prepare(path string) (error) {
+	_log.Info("Preparng path: %s", path)
 	_, err := os.Stat(path)
 	if err != nil {
 		err := os.MkdirAll(path, 0777)
