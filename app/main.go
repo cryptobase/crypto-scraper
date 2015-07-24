@@ -33,7 +33,8 @@ var format = logging.MustStringFormatter(
 )
 
 var (
-	path = flag.String("path", "~/crypto-scraper/", "Basepath indicating where to store the scraping output.")
+	p = flag.String("path", "~/crypto-scraper/", "Basepath indicating where to store the scraping output.")
+	scrapers = flag.String("scrapers", "bitstamp,bitfinex", "List of scraper id's to use.")
 )
 
 func main() {
@@ -41,15 +42,30 @@ func main() {
 
 	backend1 := logging.NewLogBackend(os.Stdout, "", 0)
 	backend1Formatter := logging.NewBackendFormatter(backend1, format)
-
 	logging.SetBackend(backend1Formatter)
 
-	handler_wrapper(bitfinex.Scrape, "bitfinex")
-	handler_wrapper(bitstamp.Scrape, "bitstamp")
+	//Expand path
+	path := *p
+	if strings.HasPrefix(*p, "~") {
+		usr, _ := user.Current()
+		dir := usr.HomeDir
+		path = strings.Replace(*p, "~", dir, 1)
+	}
+
+	//Run each scraper
+	_log.Info("basepath: [%s], scrapers: [%s]", path, *scrapers)
+	for _, s := range strings.Split(*scrapers, ",") {
+		switch s {
+			case "bitstamp":
+				handler_wrapper(path, bitstamp.Scrape, "bitstamp")
+			case "bitfinex":
+				handler_wrapper(path, bitfinex.Scrape, "bitfinex")
+		}
+	}
 }
 
-func handler_wrapper(f func(int64) ([]model.Trade, error), name string) {
-	file, existing, new, appended, buckets, last_timestamp, err := handler(f, name)
+func handler_wrapper(path string, f func(int64) ([]model.Trade, error), name string) {
+	file, existing, new, appended, buckets, last_timestamp, err := handler(path, f, name)
 	if err != nil {
 		_log.Error("[%10s] Update %7s :: msg=[%s]", name, "failed", err)
 	} else {
@@ -58,21 +74,14 @@ func handler_wrapper(f func(int64) ([]model.Trade, error), name string) {
 	}
 }
 
-func handler(f func(int64) ([]model.Trade, error), name string) (string, int, int, int, int, int64, error) {
-	p := *path
-	if strings.HasPrefix(*path, "~") {
-		usr, _ := user.Current()
-		dir := usr.HomeDir
-		p = strings.Replace(*path, "~", dir, 1)
-	}
-
-	err := prepare(p)
+func handler(path string, f func(int64) ([]model.Trade, error), name string) (string, int, int, int, int, int64, error) {
+	err := prepare(path)
 	if err != nil {
 		return "",0,0,0,0,0,err
 	}
 
 	//Load existing trades from file
-	latest_file_name, _ := FindLatestCsvFile(p, name)
+	latest_file_name, _ := FindLatestCsvFile(path, name)
 	file := fmt.Sprintf("%s%s", path, latest_file_name)
 	existing_trades, _ := LoadFromCsv(file)
 
@@ -90,7 +99,7 @@ func handler(f func(int64) ([]model.Trade, error), name string) (string, int, in
 	}
 
 	//Append new trades to file
-	appended, days, err1 := Persist(p, name, last_timestamp, new_trades)
+	appended, days, err1 := Persist(path, name, last_timestamp, new_trades)
 	if err1 != nil {
 		return latest_file_name,0,0,0,0,0,err1
 	}
@@ -99,7 +108,6 @@ func handler(f func(int64) ([]model.Trade, error), name string) (string, int, in
 }
 
 func prepare(path string) (error) {
-	_log.Info("Preparng path: %s", path)
 	_, err := os.Stat(path)
 	if err != nil {
 		err := os.MkdirAll(path, 0777)
